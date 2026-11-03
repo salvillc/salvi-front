@@ -162,26 +162,31 @@ const mutations = {
         setTimeout(() => {
           state.quantityChangeID = -1
         }, 2000)
+        let found = false
         for (let i = 0; i < state.newBasketProduct.length; i++) {
           if (state.newBasketProduct[i].id == ctx.id) {
-            state.newBasketProduct.splice(i, 1)
+            state.newBasketProduct.splice(i, 1, ctx)
+            found = true
+            break
           }
         }
 
-        state.newBasketProduct.push(ctx)
-        state.newBasketProduct.sort(function(a, b) {
-          if (ctx.index !== undefined) {
-            if (a.index > b.index) {
-              return 1
+        if (!found) {
+          state.newBasketProduct.push(ctx)
+          state.newBasketProduct.sort(function(a, b) {
+            if (ctx.index !== undefined) {
+              if (a.index > b.index) {
+                return 1
+              }
+              if (a.index < b.index) {
+                return -1
+              }
+            } else {
+              ctx.index = state.newBasketProduct.length + 1
             }
-            if (a.index < b.index) {
-              return -1
-            }
-          } else {
-            ctx.index = state.newBasketProduct.length + 1
-          }
-          return 0
-        })
+            return 0
+          })
+        }
       } else {
         for (let i = 0; i < state.newBasketProduct.length; i++) {
           if (state.newBasketProduct[i].id == ctx.id) {

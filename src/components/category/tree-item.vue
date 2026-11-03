@@ -1,6 +1,19 @@
 <template>
   <div class="item-child">
+    <a
+      v-if="item.url"
+      :href="item.url"
+      :target="item.target_blank ? '_blank' : '_self'"
+      class="child-name"
+      :class="{
+        'head-name': main
+      }"
+      :title="item.name"
+    >
+      {{ item.name }}
+    </a>
     <router-link
+      v-else
       class="child-name"
       :class="{
         'head-name': main,
@@ -12,7 +25,17 @@
       {{ item.name }}
     </router-link>
     <div v-for="(itemChild, index) in item.children" :key="index">
+      <a
+        v-if="itemChild.url"
+        :href="itemChild.url"
+        :target="itemChild.target_blank ? '_blank' : '_self'"
+        class="child-name"
+        :title="itemChild.name"
+      >
+        {{ itemChild.name }}
+      </a>
       <router-link
+        v-else
         class="child-name"
         :class="[{ active: itemChild.code == $store.getters['category/uuid'] }, itemChild.name == 'Новорічні подарунки' ? 'red--text' : '']"
         :title="itemChild.name == 'Новорічні подарунки' ? 'Новорічні товари та подарунки' : itemChild.name"

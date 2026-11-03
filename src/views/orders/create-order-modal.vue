@@ -831,41 +831,51 @@
                 this.$api
                     .post("/order/set-status-on-approve", data)
                     .then(response => {
+                        this.loading(false)
+                        this.blockSubmit = false
+                        this.setNewBasketProduct({
+                            ctx: []
+                        });
+                        this.setIdProduct({
+                            ctx: {
+                                order_id: 0
+                            }
+                        })
                         if (response.data.success) {
-                            this.loading(false)
-                            this.setNewBasketProduct({
-                                ctx: []
-                            });
-                            this.setIdProduct({
-                                ctx: {
-                                    order_id: 0
-                                }
-                            })
                             this.$router.push(`/success-order?id=${id}`)
                         } else {
-                            this.loading(false)
-                            this.setNewBasketProduct({
-                                ctx: []
-                            });
-                            this.setIdProduct({
-                                ctx: {
-                                    order_id: 0
-                                }
-                            })
-                            this.$router.push(`/success-order?id=${id}`)
+                            if (response.data.message) {
+                                this.$loadingBus.$emit("snackbar", {
+                                    text: response.data.message,
+                                    color: "error"
+                                })
+                            }
+                            this.$router.push(`/orders?order=${id}`)
                         }
+                    })
+                    .catch(() => {
+                        this.loading(false)
+                        this.blockSubmit = false
+                        this.setNewBasketProduct({
+                            ctx: []
+                        });
+                        this.setIdProduct({
+                            ctx: {
+                                order_id: 0
+                            }
+                        })
+                        this.$router.push(`/orders?order=${id}`)
                     })
             },
             createOrder() {
-                this.loading(true)
-                if (this.tab == 'one-date') {
-                    this.model.one_day_shipment = true
-                } else {
-                    this.model.one_day_shipment = false
-                }
-
                 if (!this.blockSubmit) {
                     this.blockSubmit = true
+                    this.loading(true)
+                    if (this.tab == 'one-date') {
+                        this.model.one_day_shipment = true
+                    } else {
+                        this.model.one_day_shipment = false
+                    }
                     this.model.products = this.products
                     if (this.location_id == this.model.location_id) {
                         this.model.modal = 0
@@ -885,12 +895,21 @@
 
                         } else {
                             this.loading(false)
-                            response.data.errors.forEach(function(value) {
-                                errors[value.field] = value.message
-                            })
+                            this.blockSubmit = false
+                            if (response.data.errors) {
+                                response.data.errors.forEach(function(value) {
+                                    errors[value.field] = value.message
+                                })
+                            }
                             this.errors = errors
                         }
+                    }).catch(err => {
+                        this.loading(false)
                         this.blockSubmit = false
+                        this.$loadingBus.$emit("snackbar", {
+                            text: (err && err.response && err.response.data && err.response.data.message) || "Помилка при створенні замовлення",
+                            color: "error"
+                        })
                     })
                 }
             },

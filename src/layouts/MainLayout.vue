@@ -376,8 +376,8 @@ export default {
       }
     },
     snackbarFunc(e) {
-      this.snackbarTitle = e.title
-      this.snackbarColor = e.color
+      this.snackbarTitle = e.title || e.text || ""
+      this.snackbarColor = (e.color === 'success' || !e.color) ? '#269447' : (e.color === 'error' ? '#d32f2f' : e.color)
       this.snackbar = true
     },
     loadingBasket() {

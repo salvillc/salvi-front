@@ -215,6 +215,11 @@ export default {
               href: "/management/users",
               title: "Управління користувачами",
               disabled: !this.$root.rbac.managementUsers
+            },
+            {
+              href: "/management/landings",
+              title: "Промо-сторінки",
+              disabled: !this.$root.rbac.managementProductView
             }
           ]
         },

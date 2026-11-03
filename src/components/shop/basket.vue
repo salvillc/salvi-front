@@ -88,7 +88,7 @@
               v-for="(item, index) of newBasketProductComputed"
               v-show="newBasketProduct.length"
               :style="`order: ${getOrderProduct(item)}; -webkit-order: ${getOrderProduct(item)}`"
-              :key="index"
+              :key="item.id"
               class="item-row"
               :class="{
                 active: rowBG === item.id && item.newProduct,
@@ -127,7 +127,17 @@
                     <v-icon color="#4caf50">remove</v-icon>
                   </button>
 
-                  <input type="number" name="item-quantity" :value="item.quantity" :data-quantity="item.quantity" @keyup="changeQuantity(item, $event.target.value, index, item.id)" @change="changeQuantity(item, $event.target.value, index, item.id)">
+                  <input
+                    type="number"
+                    min="1"
+                    name="item-quantity"
+                    :value="item.quantity"
+                    :data-quantity="item.quantity"
+                    @input="handleQuantityInput(item, $event.target.value, index, item.id)"
+                    @change="handleQuantityCommit(item, $event.target.value, index, item.id)"
+                    @blur="handleQuantityCommit(item, $event.target.value, index, item.id)"
+                    @keyup.enter="$event.target.blur()"
+                  >
 
                   <button class="plus-btn" @click="changeQuantity(item, 'add', index, item.id)">
                     <v-icon color="#4caf50">add</v-icon>
@@ -423,7 +433,8 @@ export default {
           loadMore: true,
           orederInorder: false,
           productNoSynchronization: false,
-          deliveryDateArray: []
+          deliveryDateArray: [],
+          debounceTimers: {}
       };
   },
   computed: {
@@ -500,6 +511,14 @@ export default {
   created() {
     this.historyUpdate()
     this.$loadingBus.$on("cartFreez", this.cartFreez)
+  },
+  beforeDestroy() {
+    this.$loadingBus.$off("cartFreez", this.cartFreez)
+    if (this.debounceTimers) {
+      Object.keys(this.debounceTimers).forEach(key => {
+        clearTimeout(this.debounceTimers[key])
+      })
+    }
   },
     mounted() {
         if (this.$route.query.basket == 'open') {
@@ -868,11 +887,38 @@ export default {
         this.changeQuantity(el, el.quantity, index, el.id)
     },
 
-    changeQuantity(item, newQty, index, productId) {
-        // let leftovers = 0
-        // leftovers = this.prod_leftovers.find(prod => prod.id === item.id).leftovers
+    handleQuantityInput(item, val, index, productId) {
+        if (this.debounceTimers && this.debounceTimers[productId]) {
+            clearTimeout(this.debounceTimers[productId]);
+        }
+        if (!this.debounceTimers) {
+            this.debounceTimers = {};
+        }
+        if (val === '' || val === null || isNaN(val) || +val < 1) {
+            // User is typing/clearing the input - do not trigger change or delete item yet
+            return;
+        }
+        this.debounceTimers[productId] = setTimeout(() => {
+            this.changeQuantity(item, val, index, productId);
+        }, 600);
+    },
 
-        const multiplicity = item.multiplicity
+    handleQuantityCommit(item, val, index, productId) {
+        if (this.debounceTimers && this.debounceTimers[productId]) {
+            clearTimeout(this.debounceTimers[productId]);
+        }
+        if (val === '' || val === null || isNaN(val) || +val < 1) {
+            val = item.quantity || 1;
+        }
+        this.changeQuantity(item, val, index, productId);
+    },
+
+    changeQuantity(item, newQty, index, productId) {
+        if (newQty === '' || newQty === null || newQty === undefined) {
+            return;
+        }
+
+        const multiplicity = item.multiplicity && item.multiplicity > 1 ? +item.multiplicity : 1;
 
         var nQty;
         this.newBasketProduct.forEach(i => {
@@ -882,103 +928,104 @@ export default {
         });
         if(newQty === 'add') {
             if (item.is_strict_multiplicity || item.strict_multiplicity) {
-                nQty += +multiplicity;
+                nQty += multiplicity;
             } else {
-                nQty += 1
+                nQty += 1;
             }
         } else if(newQty === 'remove') {
             if (item.is_strict_multiplicity || item.strict_multiplicity) {
-                nQty -= +multiplicity;
+                nQty -= multiplicity;
             } else {
-                nQty -= 1
+                nQty -= 1;
             }
         } else {
-            if (item.is_strict_multiplicity || item.strict_multiplicity) {
-                if (Number.isInteger(newQty / item.multiplicity) * item.multiplicity) {
-                    nQty = Math.floor(newQty / item.multiplicity) * item.multiplicity;
+            const parsed = parseInt(newQty, 10);
+            if (isNaN(parsed) || parsed < 1) {
+                nQty = 1;
+            } else if ((item.is_strict_multiplicity || item.strict_multiplicity) && multiplicity > 1) {
+                if (parsed % multiplicity === 0) {
+                    nQty = parsed;
                 } else {
-                    if (Math.floor(item.leftovers / item.multiplicity) < Math.floor(newQty / item.multiplicity)) {
-                        nQty = Math.floor(newQty / item.multiplicity) * item.multiplicity;
+                    const leftovers = item.leftovers_salvi || item.leftovers || 0;
+                    if (leftovers > 0 && Math.floor(leftovers / multiplicity) < Math.floor(parsed / multiplicity)) {
+                        nQty = Math.floor(parsed / multiplicity) * multiplicity;
                     } else {
-                        nQty = Math.ceil(newQty / item.multiplicity) * item.multiplicity;
+                        nQty = Math.ceil(parsed / multiplicity) * multiplicity;
+                    }
+                    if (nQty < multiplicity) {
+                        nQty = multiplicity;
                     }
                 }
             } else {
-                nQty = newQty
+                nQty = parsed;
             }
-
         }
 
         if(nQty < 1) {
-            this.buttonTwo(item, index, true)
-            return
+            if (newQty === 'remove') {
+                this.buttonTwo(item, index, true);
+            } else {
+                item.quantity = 1;
+            }
+            return;
         }
 
-        // r = +r;
         let newProduct = false;
-        // let changeQuantity = true;
         if (item.newProduct) {
-            newProduct = true
+            newProduct = true;
         }
 
-        if (true) {
-            item.quantity = nQty;
-            // this.socketEmitFreez(true);
+        item.quantity = nQty;
+        this.setQuantityChangeID({
+            ctx: productId
+        });
+        setTimeout(() => {
             this.setQuantityChangeID({
-                ctx: productId
+                ctx: 0
+            });
+        }, 2000);
+        let total_sum = +item.price * + nQty;
+        this.setNewBasketProduct({
+            ctx: {
+                name: item.name,
+                total_sum: total_sum.toFixed(2),
+                index: index,
+                id: item.id,
+                addId: item.addId,
+                lastUpdate: item.lastUpdate,
+                quantity: nQty,
+                val: true,
+                price: item.price,
+                discount_price: item.discount_price,
+                img: item.img,
+                newProduct: newProduct,
+                changeQuantity: true,
+                leftovers_salvi: item.leftovers_salvi,
+                leftovers_supplier: item.leftovers_supplier,
+                supplier_delivery_postpone: item.supplier_delivery_postpone,
+                multiplicity: item.multiplicity,
+                isSpecificationProduct: item.isSpecificationProduct,
+                is_strict_multiplicity: item.is_strict_multiplicity || item.strict_multiplicity ? 1 : 0,
+                strict_multiplicity: item.strict_multiplicity,
+                is_temperature_conditions: item.is_temperature_conditions,
+            }
+        });
+        this.$api
+            .post("/cart/update-product", {
+                order_id: this.idProduct.order_id,
+                product_id: item.id,
+                id: item.addId,
+                quantity: nQty,
+                is_strict_multiplicity: item.is_strict_multiplicity || item.strict_multiplicity ? 1 : 0,
             })
-            setTimeout(() => {
-                this.setQuantityChangeID({
-                    ctx: 0
-                })
-            }, 2000)
-            let total_sum = +item.price * + nQty;
-            this.setNewBasketProduct({
-                ctx: {
-                    name: item.name,
-                    total_sum: total_sum.toFixed(2),
-                    index: index,
-                    id: item.id,
-                    addId: item.addId,
-                    lastUpdate: item.lastUpdate,
-                    quantity: nQty,
-                    val: true,
-                    price: item.price,
-                    discount_price: item.discount_price,
-                    img: item.img,
-                    newProduct: newProduct,
-                    changeQuantity: true,
-                    leftovers_salvi: item.leftovers_salvi,
-                    leftovers_supplier: item.leftovers_supplier,
-                    supplier_delivery_postpone: item.supplier_delivery_postpone,
-                    multiplicity: item.multiplicity,
-                    isSpecificationProduct: item.isSpecificationProduct,
-                    is_strict_multiplicity: item.is_strict_multiplicity || item.strict_multiplicity ? 1 : 0,
-                    strict_multiplicity: item.strict_multiplicity,
-                    is_temperature_conditions: item.is_temperature_conditions,
-                }
+            .then(response => {
+                this.socketEmit();
             })
-            this.$api
-                .post("/cart/update-product", {
-                    order_id: this.idProduct.order_id,
-                    product_id: item.id,
-                    id: item.addId,
-                    quantity: nQty,
-                    is_strict_multiplicity: item.is_strict_multiplicity || item.strict_multiplicity ? 1 : 0,
-                })
-                // eslint-disable-next-line no-unused-vars
-                .then(response => {
-                    // if (response.data.success) {
-                    this.socketEmit()
-                    // }
-                })
-            this.changeInputBlock = false
-            // this.loading = true
-            setTimeout(() => {
-                // this.loading = false
-                this.$loadingBus.$emit("updateBasket", e)
-            }, 1000)
-        }
+            .catch(() => {});
+        this.changeInputBlock = false;
+        setTimeout(() => {
+            this.$loadingBus.$emit("updateBasket");
+        }, 1000);
     },
 
     quantity(e, i, r) {

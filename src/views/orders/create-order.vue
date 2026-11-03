@@ -1028,29 +1028,40 @@
           this.$api
               .post("/order/set-status-on-approve", data)
               .then(response => {
+                  this.loading(false)
+                  this.blockSubmit = false
+                  this.setNewBasketProduct({
+                      ctx: []
+                  });
+                  this.setIdProduct({
+                      ctx: {
+                          order_id: 0
+                      }
+                  })
                   if (response.data.success) {
-                      this.loading(false)
-                      this.setNewBasketProduct({
-                          ctx: []
-                      });
-                      this.setIdProduct({
-                          ctx: {
-                              order_id: 0
-                          }
-                      })
                       this.$router.push(`/success-order?id=${id}`)
                   } else {
-                      this.loading(false)
-                      this.setNewBasketProduct({
-                          ctx: []
-                      });
-                      this.setIdProduct({
-                          ctx: {
-                              order_id: 0
-                          }
-                      })
-                      this.$router.push(`/success-order?id=${id}`)
+                      if (response.data.message) {
+                          this.$loadingBus.$emit("snackbar", {
+                              text: response.data.message,
+                              color: "error"
+                          })
+                      }
+                      this.$router.push(`/orders?order=${id}`)
                   }
+              })
+              .catch(() => {
+                  this.loading(false)
+                  this.blockSubmit = false
+                  this.setNewBasketProduct({
+                      ctx: []
+                  });
+                  this.setIdProduct({
+                      ctx: {
+                          order_id: 0
+                      }
+                  })
+                  this.$router.push(`/orders?order=${id}`)
               })
       },
     createOrder() {
@@ -1095,6 +1106,7 @@
 
                 } else {
                     this.loading(false)
+                    this.blockSubmit = false
 
                     if (response.data.errors) {
                         response.data.errors.forEach(function(value) {
@@ -1108,7 +1120,11 @@
 
                     this.errors = errors
                 }
+            }).catch(err => {
+                this.loading(false)
                 this.blockSubmit = false
+                this.errorMessage = (err && err.response && err.response.data && err.response.data.message)
+                    || "Помилка зв'язку з сервером при створенні замовлення. Будь ласка, спробуйте ще раз."
             })
         }
     },

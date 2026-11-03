@@ -559,6 +559,17 @@ const router = new Router({
             },
             component: () => import("./views/management/users/user.vue")
         },
+        {
+            path: "/management/landings",
+            name: "management_landings",
+            meta: {
+                company: true,
+                title: "Промо-сторінки",
+                layout: "main",
+                rule: "managementProductView"
+            },
+            component: () => import("./views/management/landing/index.vue")
+        },
     ]
 })
 router.beforeEach((to, from, next) => {
