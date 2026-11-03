@@ -373,7 +373,16 @@
             <template slot="items" slot-scope="props">
               <tr>
                 <td>
-                  <b>{{ props.item.title }}</b>
+                  <div class="d-flex align-center">
+                    <div
+                      v-if="props.item.icon_url"
+                      class="mr-2"
+                      style="width: 30px; height: 30px; min-width: 30px; border-radius: 50%; background: #f5f5f5; border: 1px solid #e0e0e0; overflow: hidden; display: flex; align-items: center; justify-content: center;"
+                    >
+                      <img :src="props.item.icon_url" :alt="props.item.title" style="width: 100%; height: 100%; object-fit: contain; padding: 2px;">
+                    </div>
+                    <b>{{ props.item.title }}</b>
+                  </div>
                 </td>
                 <td>
                   <a :href="props.item.url" target="_blank" class="link-val" style="font-size: 13px;">
@@ -626,6 +635,61 @@
                 ></v-select>
               </v-flex>
 
+              <!-- Іконка розділу / картки -->
+              <v-flex xs12 class="mb-3">
+                <div class="font-weight-medium mb-2" style="font-size: 13px; color: #555;">
+                  Іконка розділу / картки (відображається в кружечку каталогу)
+                </div>
+                <div class="d-flex align-center" style="gap: 16px;">
+                  <div
+                    style="width: 56px; height: 56px; min-width: 56px; border-radius: 50%; background: #f5f5f5; border: 2px dashed #cfd8dc; display: flex; align-items: center; justify-content: center; overflow: hidden;"
+                  >
+                    <img
+                      v-if="menuItemForm.icon_url"
+                      :src="menuItemForm.icon_url"
+                      alt="Icon"
+                      style="width: 100%; height: 100%; object-fit: contain; padding: 4px;"
+                    />
+                    <v-icon v-else color="#b0bec5">image</v-icon>
+                  </div>
+
+                  <div>
+                    <input
+                      ref="menuIconInput"
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                      style="display: none;"
+                      @change="handleMenuIconUpload"
+                    />
+                    <v-btn
+                      small
+                      outline
+                      color="#269447"
+                      :loading="uploadingIcon"
+                      @click="triggerIconSelect"
+                      class="ma-0 mr-2"
+                    >
+                      <v-icon left small>cloud_upload</v-icon>
+                      {{ menuItemForm.icon_url ? 'Змінити іконку' : 'Завантажити іконку' }}
+                    </v-btn>
+                    <v-btn
+                      v-if="menuItemForm.icon_url || menuItemForm.icon"
+                      small
+                      flat
+                      color="#d32f2f"
+                      @click="removeMenuIcon"
+                      class="ma-0"
+                    >
+                      <v-icon left small>delete</v-icon>
+                      Видалити
+                    </v-btn>
+                    <div class="text-muted mt-1" style="font-size: 11px; color: #888;">
+                      PNG, JPG, WEBP або SVG до 5 МБ. Рекомендується зображення з прозорим фоном.
+                    </div>
+                  </div>
+                </div>
+              </v-flex>
+
               <!-- Опции: открыть в новой вкладке, активен -->
               <v-flex xs12 sm6>
                 <v-switch
@@ -719,6 +783,7 @@ export default {
       menuItems: [],
       loadingMenuItems: false,
       savingMenuItem: false,
+      uploadingIcon: false,
       dialogMenuItem: false,
       menuItemValid: true,
       menuCategories: {
@@ -747,7 +812,9 @@ export default {
         parent_id: null,
         sort: 0,
         target_blank: true,
-        active: true
+        active: true,
+        icon: null,
+        icon_url: null
       }
     };
   },
@@ -866,7 +933,18 @@ export default {
             this.menuItems = response.data.items;
           }
           if (response.data && response.data.categories) {
-            this.menuCategories = response.data.categories;
+            const cats = response.data.categories;
+            this.menuCategories = {
+              level1: (cats.level1 || []).map(c => ({
+                ...c,
+                id: Number(c.id)
+              })),
+              level2: (cats.level2 || []).map(c => ({
+                ...c,
+                id: Number(c.id),
+                parent_id: Number(c.parent_id)
+              }))
+            };
           }
         })
         .catch(() => {
@@ -877,7 +955,7 @@ export default {
     openCreateMenuItem() {
       const defaultParent =
         this.menuCategories.level1 && this.menuCategories.level1.length
-          ? this.menuCategories.level1[0].id
+          ? Number(this.menuCategories.level1[0].id)
           : null;
 
       this.menuItemForm = {
@@ -888,7 +966,9 @@ export default {
         parent_id: defaultParent,
         sort: 0,
         target_blank: true,
-        active: true
+        active: true,
+        icon: null,
+        icon_url: null
       };
       this.dialogMenuItem = true;
       this.$nextTick(() => {
@@ -903,11 +983,13 @@ export default {
         id: item.id,
         title: item.title,
         url: item.url,
-        level: item.level,
-        parent_id: item.parent_id,
+        level: Number(item.level || 2),
+        parent_id: item.parent_id !== null && item.parent_id !== undefined ? Number(item.parent_id) : null,
         sort: item.sort,
         target_blank: !!item.target_blank,
-        active: !!item.active
+        active: !!item.active,
+        icon: item.icon || null,
+        icon_url: item.icon_url || null
       };
       this.dialogMenuItem = true;
       this.$nextTick(() => {
@@ -918,15 +1000,16 @@ export default {
     },
 
     handleLevelChange(level) {
-      if (level === 2) {
+      const lvl = Number(level);
+      if (lvl === 2) {
         this.menuItemForm.parent_id =
           this.menuCategories.level1 && this.menuCategories.level1.length
-            ? this.menuCategories.level1[0].id
+            ? Number(this.menuCategories.level1[0].id)
             : null;
       } else {
         this.menuItemForm.parent_id =
           this.menuCategories.level2 && this.menuCategories.level2.length
-            ? this.menuCategories.level2[0].id
+            ? Number(this.menuCategories.level2[0].id)
             : null;
       }
     },
@@ -975,6 +1058,68 @@ export default {
             "Помилка видалення пункту меню";
           this.notify(msg, "error");
         });
+    },
+
+    triggerIconSelect() {
+      if (this.$refs.menuIconInput) {
+        this.$refs.menuIconInput.click();
+      }
+    },
+
+    handleMenuIconUpload(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+
+      const ext = file.name.split(".").pop().toLowerCase();
+      const allowed = ["png", "jpg", "jpeg", "webp", "svg"];
+      if (!allowed.includes(ext)) {
+        this.notify("Дозволені лише зображення: PNG, JPG, WEBP, SVG", "error");
+        event.target.value = "";
+        return;
+      }
+
+      if (file.size > 5 * 1024 * 1024) {
+        this.notify("Розмір файлу не повинен перевищувати 5 МБ", "error");
+        event.target.value = "";
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("icon", file);
+
+      this.uploadingIcon = true;
+      this.$api
+        .post("/landing-admin/upload-menu-icon", formData, {
+          headers: { "Content-Type": "multipart/form-data" }
+        })
+        .then(response => {
+          this.uploadingIcon = false;
+          event.target.value = "";
+          if (response.data && response.data.success) {
+            this.menuItemForm.icon = response.data.file_name;
+            this.menuItemForm.icon_url = response.data.url;
+            this.notify("Іконку успішно завантажено", "success");
+          } else {
+            const msg = (response.data && response.data.message) || "Помилка завантаження іконки";
+            this.notify(msg, "error");
+          }
+        })
+        .catch(err => {
+          this.uploadingIcon = false;
+          event.target.value = "";
+          const msg =
+            (err.response && err.response.data && err.response.data.message) ||
+            "Помилка завантаження іконки";
+          this.notify(msg, "error");
+        });
+    },
+
+    removeMenuIcon() {
+      this.menuItemForm.icon = null;
+      this.menuItemForm.icon_url = null;
+      if (this.$refs.menuIconInput) {
+        this.$refs.menuIconInput.value = "";
+      }
     },
 
     toggleMenuItem(item) {

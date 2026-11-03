@@ -265,12 +265,33 @@
           </div>
           <div class="home__category-items">
             <div v-for="item in categoryList" :key="item.id" class="home__category-item">
-              <router-link class="home__category-item-container" :to="getUrlLinkCategory(item.code)">
+              <a
+                v-if="item.url"
+                :href="item.url"
+                :target="item.target_blank ? '_blank' : '_self'"
+                class="home__category-item-container"
+              >
                 <div class="home__category-item-icon">
                   <img v-if="item.img_path" :src="item.img_path" :alt="item.name">
                   <svg v-else xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><path d="M97.5 400l50-160 379.4 0-50 160-379.4 0zm190.7 48L477 448c21 0 39.6-13.6 45.8-33.7l50-160c9.7-30.9-13.4-62.3-45.8-62.3l-379.4 0c-21 0-39.6 13.6-45.8 33.7L80.2 294.4 80.2 96c0-8.8 7.2-16 16-16l138.7 0c3.5 0 6.8 1.1 9.6 3.2L282.9 112c13.8 10.4 30.7 16 48 16l117.3 0c8.8 0 16 7.2 16 16l48 0c0-35.3-28.7-64-64-64L330.9 80c-6.9 0-13.7-2.2-19.2-6.4L273.3 44.8C262.2 36.5 248.8 32 234.9 32L96.2 32c-35.3 0-64 28.7-64 64l0 288c0 35.3 28.7 64 64 64l192 0z"/></svg>
                 </div>
-                <div class="home__category-item-name">
+                <div class="home__category-item-name" :class="{ 'red--text': item.highlight }">
+                  {{item.name}}
+                </div>
+                <svg width="8" height="13" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M3.95635 7.07273C4.31194 6.68921 4.31194 6.09647 3.95635 5.71295L0.267086 1.73383C-0.0884996 1.3503 -0.0884997 0.757564 0.267086 0.374041L0.317407 0.319766C0.713125 -0.107042 1.38831 -0.107042 1.78403 0.319766L6.78435 5.71295C7.13994 6.09647 7.13994 6.68921 6.78435 7.07273L1.78403 12.4659C1.38831 12.8927 0.713126 12.8927 0.317408 12.4659L0.267087 12.4116C-0.0884989 12.0281 -0.0884992 11.4354 0.267087 11.0518L3.95635 7.07273Z" fill="#BCBCBC"/>
+                </svg>
+              </a>
+              <router-link
+                v-else
+                class="home__category-item-container"
+                :to="getUrlLinkCategory(item.code)"
+              >
+                <div class="home__category-item-icon">
+                  <img v-if="item.img_path" :src="item.img_path" :alt="item.name">
+                  <svg v-else xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><path d="M97.5 400l50-160 379.4 0-50 160-379.4 0zm190.7 48L477 448c21 0 39.6-13.6 45.8-33.7l50-160c9.7-30.9-13.4-62.3-45.8-62.3l-379.4 0c-21 0-39.6 13.6-45.8 33.7L80.2 294.4 80.2 96c0-8.8 7.2-16 16-16l138.7 0c3.5 0 6.8 1.1 9.6 3.2L282.9 112c13.8 10.4 30.7 16 48 16l117.3 0c8.8 0 16 7.2 16 16l48 0c0-35.3-28.7-64-64-64L330.9 80c-6.9 0-13.7-2.2-19.2-6.4L273.3 44.8C262.2 36.5 248.8 32 234.9 32L96.2 32c-35.3 0-64 28.7-64 64l0 288c0 35.3 28.7 64 64 64l192 0z"/></svg>
+                </div>
+                <div class="home__category-item-name" :class="{ 'red--text': item.highlight }">
                   {{item.name}}
                 </div>
                 <svg width="8" height="13" viewBox="0 0 8 13" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -283,9 +304,27 @@
                     {{item.name}}
                   </div>
                   <div class="home__menu-list">
-                    <router-link v-for="ele in item.children" :key="ele.id" :to="`/catalog/${getCategoryUUID}/${item.code}/${ele.code}`" class="home__menu-list-item">
-                      {{ele.name}}
-                    </router-link>
+                    <template v-for="ele in item.children">
+                      <a
+                        v-if="ele.url"
+                        :key="ele.id"
+                        :href="ele.url"
+                        :target="ele.target_blank ? '_blank' : '_self'"
+                        class="home__menu-list-item"
+                        :class="{ 'red--text': ele.highlight }"
+                      >
+                        {{ele.name}}
+                      </a>
+                      <router-link
+                        v-else
+                        :key="ele.id"
+                        :to="`/catalog/${getCategoryUUID}/${item.code}/${ele.code}`"
+                        class="home__menu-list-item"
+                        :class="{ 'red--text': ele.highlight }"
+                      >
+                        {{ele.name}}
+                      </router-link>
+                    </template>
                   </div>
                 </div>
               </div>
@@ -294,33 +333,41 @@
         </div>
 
         <div v-if="categoryList">
-
-          <div v-for="(cat, index) in categoryList" :key="cat.id" class="home__slider-section">
-            <div class="home__slider-section-title">
-              {{cat.name}}
-            </div>
-
-            <div v-if="cat.children && cat.children.length" class="home__slider-categories">
-              <div
-                @click="changeActivePopularCategory(null, index)"
-                :class="['home__slider-category', cat.check_category == null && 'active']"
-              >
-                Всі
+          <template v-for="(cat, index) in categoryList">
+            <div
+              v-if="!cat.is_custom && ((cat.products && cat.products.length) || (cat.products_filter && cat.products_filter.length))"
+              :key="cat.id"
+              class="home__slider-section"
+            >
+              <div class="home__slider-section-title">
+                {{cat.name}}
               </div>
-              <div
-                @click="changeActivePopularCategory(item.code, index)"
-                v-for="(item, i) in cat.children"
-                :class="['home__slider-category', cat.check_category == item.code && 'active']"
-              >
-                {{item.name}}
-              </div>
-            </div>
 
-            <slider_tile
-              :dataTable="cat.products_filter ? cat.products_filter : cat.products"
-              :urlLink="getUrlLinkCategory(cat.code)"
-            />
-          </div>
+              <div v-if="cat.children && cat.children.length" class="home__slider-categories">
+                <div
+                  @click="changeActivePopularCategory(null, index)"
+                  :class="['home__slider-category', cat.check_category == null && 'active']"
+                >
+                  Всі
+                </div>
+                <template v-for="(item, i) in cat.children">
+                  <div
+                    v-if="!item.url && !item.is_custom"
+                    :key="item.id || i"
+                    @click="changeActivePopularCategory(item.code, index)"
+                    :class="['home__slider-category', cat.check_category == item.code && 'active']"
+                  >
+                    {{item.name}}
+                  </div>
+                </template>
+              </div>
+
+              <slider_tile
+                :dataTable="cat.products_filter ? cat.products_filter : cat.products"
+                :urlLink="getUrlLinkCategory(cat.code)"
+              />
+            </div>
+          </template>
         </div>
 
       </div>
@@ -689,22 +736,24 @@
 
           this.catalog_data = data
 
-          if (res.data.categoryListNext.length) {
+          if (res.data.categoryListNext && res.data.categoryListNext.length) {
             category.forEach((item, index) => {
               const data = item.products
               item.check_category = null
               item.products_filter = null
-              for(let i = 0; data.length > i; i++) {
-                data[i].multiplicity_switch = false
+              if (data && data.length) {
+                for(let i = 0; data.length > i; i++) {
+                  data[i].multiplicity_switch = false
 
-                if(this.newBasketProduct.length) {
-                  this.newBasketProduct.find(product => {
-                    if(product.id === data[i].id) {
-                      if (product.is_strict_multiplicity) {
-                        data[i].multiplicity_switch = true
-                      }
-                    };
-                  });
+                  if(this.newBasketProduct && this.newBasketProduct.length) {
+                    this.newBasketProduct.find(product => {
+                      if(product.id === data[i].id) {
+                        if (product.is_strict_multiplicity) {
+                          data[i].multiplicity_switch = true
+                        }
+                      };
+                    });
+                  }
                 }
               }
             })
@@ -1168,6 +1217,8 @@
     .home__category-item-container {
       display: flex;
       align-items: center;
+      text-decoration: none;
+      width: 100%;
     }
 
     &:hover {
@@ -1271,6 +1322,10 @@
     overflow-wrap: normal;
     white-space: normal;
     hyphens: none;
+
+    &.red--text {
+      color: #e53935;
+    }
   }
   .home__slider-section {
     padding-top: 50px;
