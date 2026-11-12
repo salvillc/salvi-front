@@ -1842,7 +1842,7 @@ export default {
         url = moreSeeUrl
       } else if (this.$route.name == 'popular') {
         url = popularUrl
-      } else if (this.search.length < 1) {
+      } else if (this.search.length < 1 && this.filterUuid) {
         url = categoryUrl
       }
 
