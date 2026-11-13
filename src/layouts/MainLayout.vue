@@ -267,9 +267,17 @@ export default {
   },
   beforeDestroy() {
     this.$loadingBus.$off("loading")
+    if (this._b24Observer) {
+      this._b24Observer.disconnect()
+      this._b24Observer = null
+    }
   },
   destroyed() {
     window.removeEventListener("resize", this.handleResize)
+    if (this._b24Observer) {
+      this._b24Observer.disconnect()
+      this._b24Observer = null
+    }
   },
   mounted() {
       if (this.$route.query.basket == 'open') {
@@ -351,16 +359,239 @@ export default {
               console.log(error)
             })
       },
+      getCurrentUserData() {
+        if (this.user && (this.user.phone_number || this.user.phone)) {
+          return this.user;
+        }
+        try {
+          const stored = localStorage.getItem('current_user');
+          if (stored) return JSON.parse(stored);
+        } catch (e) {}
+        return this.user || null;
+      },
+      isUserMessageSent() {
+        return !!(this._b24UserSentMessage || sessionStorage.getItem('b24_user_sent_message') === 'true');
+      },
+      onClientSentMessage() {
+        this._b24UserSentMessage = true;
+        try {
+          sessionStorage.setItem('b24_user_sent_message', 'true');
+        } catch (e) {}
+        // Теперь, когда клиент отправил сообщение, инициируем автоотправку скрытой формы
+        this.triggerB24AutoSubmit();
+      },
       autoCompleteForm() {
-          window.addEventListener('b24:form:init', (event) => {
-              let form = event.detail.object;
-              form.setValues({
-                  "name": this.user.first_name,
-                  "last-name": this.user.last_name,
-                  "email": this.user.email,
-                  "phone": `+380 ${this.user.phone_number}`
-              });
+        if (window._b24FormAutoSubmitInit) return;
+        window._b24FormAutoSubmitInit = true;
+
+        // 1. Слушаем событие отправки сообщения пользователем через официальный API виджета
+        window.addEventListener('onBitrixLiveChat', (event) => {
+          const widget = event.detail.widget;
+          if (widget && typeof widget.subscribe === 'function') {
+            widget.subscribe({
+              type: 'userMessage',
+              callback: () => {
+                this.onClientSentMessage();
+              }
+            });
+          }
+        });
+
+        // 2. DOM-обработчики отправки сообщения: нажатие Enter в чате
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            const textarea = e.target && e.target.closest && e.target.closest('.bx-livechat-wrapper textarea, .bx-im-textarea-input');
+            if (textarea && textarea.value && textarea.value.trim().length > 0) {
+              this.onClientSentMessage();
+            }
+          }
+        }, true);
+
+        // 3. DOM-обработчики отправки сообщения: клик по кнопке/иконке отправки в чате
+        document.addEventListener('click', (e) => {
+          if (e.target && e.target.closest && e.target.closest('.bx-livechat-wrapper')) {
+            const sendBtn = e.target.closest(
+              '.bx-im-textarea-send-button, .bx-livechat-send-btn, .bx-messenger-textarea-send-button, [data-icon="send"], button[title*="відправити" i], button[title*="отправить" i], button[title*="send" i]'
+            );
+            if (sendBtn) {
+              this.onClientSentMessage();
+            }
+          }
+        }, true);
+
+        // 4. Инициализация формы Битрикс24
+        window.addEventListener('b24:form:init', (event) => {
+          const formObj = event.detail.object;
+          const user = this.getCurrentUserData();
+
+          // Если пользователя нет или нет обязательного поля (телефона) — НЕ автозаполняем и НЕ отправляем
+          const phone = user ? String(user.phone_number || user.phone || '').trim() : '';
+          if (!user || !phone) {
+            return;
+          }
+
+          const formattedPhone = phone.startsWith('+') ? phone : `+380 ${phone}`;
+
+          // Автоподстановка контактов в форму
+          formObj.setValues({
+            "name": user.first_name || '',
+            "last-name": user.last_name || '',
+            "email": user.email || '',
+            "phone": formattedPhone
           });
+
+          // Скрываем форму (но отправляем только если пользователь уже отправил сообщение!)
+          this.triggerB24AutoSubmit();
+        });
+
+        // 5. Запуск наблюдателя за появлением элементов в DOM чата
+        this.initB24FormObserver();
+      },
+      triggerB24AutoSubmit() {
+        const wrappers = document.querySelectorAll('.bx-imopenlines-form-wrapper');
+        if (wrappers.length === 0) return;
+
+        const wrapper = wrappers[wrappers.length - 1];
+        const messageItem = wrapper.closest('.bx-im-dialog-list-item') || wrapper;
+
+        // В любом случае сразу скрываем форму в чате
+        messageItem.style.setProperty('display', 'none', 'important');
+        wrapper.style.setProperty('display', 'none', 'important');
+
+        // КРИТИЧНО: если клиент ещё не отправил сообщение — НЕ отправляем форму!
+        if (!this.isUserMessageSent()) {
+          return;
+        }
+
+        const submitBtn = wrapper.querySelector(
+          '.b24-form-btn-block button[type="submit"], .b24-form-btn[type="submit"], button.b24-form-btn, button[type="submit"]'
+        );
+        const phoneInput = wrapper.querySelector('input[name="phone"], input[type="tel"]');
+
+        if (submitBtn && !wrapper.dataset.b24Submitted) {
+          const isReady = !phoneInput || phoneInput.value || phoneInput.classList.contains('b24-form-control-not-empty');
+
+          if (isReady) {
+            wrapper.dataset.b24Submitted = 'true';
+
+            const messageId = messageItem.getAttribute('data-message-id');
+            if (messageId) {
+              try {
+                const submitted = JSON.parse(sessionStorage.getItem('b24_submitted_ids') || '[]');
+                if (!submitted.includes(messageId)) {
+                  submitted.push(messageId);
+                  sessionStorage.setItem('b24_submitted_ids', JSON.stringify(submitted));
+                }
+              } catch (e) {}
+            }
+
+            // Небольшая задержка 100мс перед кликом
+            setTimeout(() => {
+              submitBtn.click();
+            }, 100);
+          }
+        }
+      },
+      initB24FormObserver() {
+        if (this._b24Observer) return;
+
+        this._b24Observer = new MutationObserver((mutations) => {
+          const user = this.getCurrentUserData();
+          const hasContacts = user && (user.phone_number || user.phone);
+
+          // Если не авторизован — наблюдатель ничего не трогает, чтобы не мешать ручному вводу
+          if (!hasContacts) return;
+
+          // Проверяем: если в диалоге появилось новое сообщение от пользователя
+          for (let mutation of mutations) {
+            for (let node of mutation.addedNodes) {
+              if (node.nodeType === 1) {
+                // Если добавлен элемент сообщения, который не является формой и не разделителем
+                if (
+                  node.classList &&
+                  (node.classList.contains('bx-im-dialog-list-item') || node.classList.contains('bx-im-message')) &&
+                  !node.querySelector('.bx-imopenlines-form-wrapper') &&
+                  !node.classList.contains('bx-imopenlines-form-wrapper') &&
+                  !node.classList.contains('bx-im-dialog-delimiter') &&
+                  !node.classList.contains('bx-im-dialog-group')
+                ) {
+                  // Пользовательское сообщение (не от оператора)
+                  if (!node.querySelector('.bx-im-message-avatar') || node.querySelector('.bx-im-message-type-user')) {
+                    this.onClientSentMessage();
+                  }
+                }
+              }
+            }
+          }
+
+          const wrappers = document.querySelectorAll('.bx-imopenlines-form-wrapper');
+          wrappers.forEach((wrapper) => {
+            const messageItem = wrapper.closest('.bx-im-dialog-list-item') || wrapper;
+            const messageId = messageItem.getAttribute('data-message-id');
+
+            // Всегда держим форму скрытой для авторизованного клиента с контактами
+            if (messageItem.style.display !== 'none') {
+              messageItem.style.setProperty('display', 'none', 'important');
+            }
+            if (wrapper.style.display !== 'none') {
+              wrapper.style.setProperty('display', 'none', 'important');
+            }
+
+            // Проверяем, было ли уже отправлено ранее
+            let alreadySubmitted = wrapper.dataset.b24Submitted === 'true';
+            if (!alreadySubmitted && messageId) {
+              try {
+                const submitted = JSON.parse(sessionStorage.getItem('b24_submitted_ids') || '[]');
+                if (submitted.includes(messageId)) {
+                  alreadySubmitted = true;
+                  wrapper.dataset.b24Submitted = 'true';
+                }
+              } catch (e) {}
+            }
+
+            if (alreadySubmitted) {
+              return;
+            }
+
+            // КРИТИЧНО: НЕ отправляем форму, если пользователь еще не отправил сообщение!
+            if (!this.isUserMessageSent()) {
+              return;
+            }
+
+            const phoneInput = wrapper.querySelector('input[name="phone"], input[type="tel"]');
+            const submitBtn = wrapper.querySelector(
+              '.b24-form-btn-block button[type="submit"], .b24-form-btn[type="submit"], button.b24-form-btn, button[type="submit"]'
+            );
+
+            const isFilled = phoneInput && (
+              phoneInput.value.trim().length > 0 ||
+              phoneInput.classList.contains('b24-form-control-not-empty')
+            );
+
+            if (isFilled && submitBtn) {
+              wrapper.dataset.b24Submitted = 'true';
+
+              if (messageId) {
+                try {
+                  const submitted = JSON.parse(sessionStorage.getItem('b24_submitted_ids') || '[]');
+                  if (!submitted.includes(messageId)) {
+                    submitted.push(messageId);
+                    sessionStorage.setItem('b24_submitted_ids', JSON.stringify(submitted));
+                  }
+                } catch (e) {}
+              }
+
+              setTimeout(() => {
+                submitBtn.click();
+              }, 100);
+            }
+          });
+        });
+
+        this._b24Observer.observe(document.body, {
+          childList: true,
+          subtree: true
+        });
       },
       getUserData() {
           this.$api.get("/account/index").then(response => {
