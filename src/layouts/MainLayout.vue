@@ -369,6 +369,52 @@ export default {
         } catch (e) {}
         return this.user || null;
       },
+      isPhoneFieldFilled(wrapper) {
+        if (!wrapper) return false;
+        const phoneInput = wrapper.querySelector('input[name="phone"], input[type="tel"]');
+        if (!phoneInput) return false;
+        // Телефон должен содержать реальные цифры номера (минимум 9 цифр)
+        const digits = String(phoneInput.value || '').replace(/\D/g, '');
+        return digits.length >= 9;
+      },
+      populateFormFields(wrapper) {
+        const user = this.getCurrentUserData();
+        const phone = user ? String(user.phone_number || user.phone || '').trim() : '';
+        if (!user || !phone) return false;
+
+        const formattedPhone = phone.startsWith('+') ? phone : `+380 ${phone}`;
+
+        // 1. Установка через сохраненный объект формы Битрикса (если доступен)
+        if (window._b24LastFormObj && typeof window._b24LastFormObj.setValues === 'function') {
+          try {
+            window._b24LastFormObj.setValues({
+              "name": user.first_name || '',
+              "last-name": user.last_name || '',
+              "email": user.email || '',
+              "phone": formattedPhone
+            });
+          } catch (e) {}
+        }
+
+        // 2. Установка значений напрямую в DOM поля формы (для Vue/модели формы)
+        if (wrapper) {
+          const setInput = (input, val) => {
+            if (!input || !val) return;
+            input.value = val;
+            input.classList.add('b24-form-control-not-empty');
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            input.dispatchEvent(new Event('blur', { bubbles: true }));
+          };
+
+          setInput(wrapper.querySelector('input[name="name"]'), user.first_name || '');
+          setInput(wrapper.querySelector('input[name="lastname"]'), user.last_name || '');
+          setInput(wrapper.querySelector('input[name="email"], input[type="email"]'), user.email || '');
+          setInput(wrapper.querySelector('input[name="phone"], input[type="tel"]'), formattedPhone);
+        }
+
+        return this.isPhoneFieldFilled(wrapper);
+      },
       isUserMessageSent() {
         return !!(this._b24UserSentMessage || sessionStorage.getItem('b24_user_sent_message') === 'true');
       },
@@ -377,11 +423,15 @@ export default {
         try {
           sessionStorage.setItem('b24_user_sent_message', 'true');
         } catch (e) {}
-        // Теперь, когда клиент отправил сообщение, инициируем автоотправку скрытой формы
+        // Теперь, когда зафиксировано сообщение, пробуем отправить скрытую форму
         this.triggerB24AutoSubmit();
       },
       autoCompleteForm() {
-        if (window._b24FormAutoSubmitInit) return;
+        if (window._b24FormAutoSubmitInit) {
+          // Если компонент перемонтировался после логина — проверяем существующую форму
+          this.triggerB24AutoSubmit();
+          return;
+        }
         window._b24FormAutoSubmitInit = true;
 
         // 1. Слушаем событие отправки сообщения пользователем через официальный API виджета
@@ -421,11 +471,11 @@ export default {
 
         // 4. Инициализация формы Битрикс24
         window.addEventListener('b24:form:init', (event) => {
-          const formObj = event.detail.object;
+          window._b24LastFormObj = event.detail.object;
           const user = this.getCurrentUserData();
+          const phone = user ? String(user.phone_number || user.phone || '').trim() : '';
 
           // Если пользователя нет или нет обязательного поля (телефона) — НЕ автозаполняем и НЕ отправляем
-          const phone = user ? String(user.phone_number || user.phone || '').trim() : '';
           if (!user || !phone) {
             return;
           }
@@ -433,21 +483,30 @@ export default {
           const formattedPhone = phone.startsWith('+') ? phone : `+380 ${phone}`;
 
           // Автоподстановка контактов в форму
-          formObj.setValues({
+          window._b24LastFormObj.setValues({
             "name": user.first_name || '',
             "last-name": user.last_name || '',
             "email": user.email || '',
             "phone": formattedPhone
           });
 
-          // Скрываем форму (но отправляем только если пользователь уже отправил сообщение!)
+          // Скрываем форму и пытаемся отправить (если сообщение уже отправлено)
           this.triggerB24AutoSubmit();
         });
 
         // 5. Запуск наблюдателя за появлением элементов в DOM чата
         this.initB24FormObserver();
+
+        // 6. Проверяем форму, если она уже была отрендерена до логина
+        setTimeout(() => {
+          this.triggerB24AutoSubmit();
+        }, 500);
       },
       triggerB24AutoSubmit() {
+        const user = this.getCurrentUserData();
+        const hasContacts = user && (user.phone_number || user.phone);
+        if (!hasContacts) return;
+
         const wrappers = document.querySelectorAll('.bx-imopenlines-form-wrapper');
         if (wrappers.length === 0) return;
 
@@ -458,38 +517,43 @@ export default {
         messageItem.style.setProperty('display', 'none', 'important');
         wrapper.style.setProperty('display', 'none', 'important');
 
-        // КРИТИЧНО: если клиент ещё не отправил сообщение — НЕ отправляем форму!
+        // Проверяем заполненность телефона. Если не заполнен — заполняем данными пользователя!
+        if (!this.isPhoneFieldFilled(wrapper)) {
+          this.populateFormFields(wrapper);
+        }
+
+        // КРИТИЧНО 1: если клиент ещё не отправил сообщение — НЕ отправляем форму!
         if (!this.isUserMessageSent()) {
+          return;
+        }
+
+        // КРИТИЧНО 2: телефон ОБЯЗАН быть заполнен реальными цифрами! Если пустой — блокируем отправку!
+        if (!this.isPhoneFieldFilled(wrapper)) {
           return;
         }
 
         const submitBtn = wrapper.querySelector(
           '.b24-form-btn-block button[type="submit"], .b24-form-btn[type="submit"], button.b24-form-btn, button[type="submit"]'
         );
-        const phoneInput = wrapper.querySelector('input[name="phone"], input[type="tel"]');
 
         if (submitBtn && !wrapper.dataset.b24Submitted) {
-          const isReady = !phoneInput || phoneInput.value || phoneInput.classList.contains('b24-form-control-not-empty');
+          wrapper.dataset.b24Submitted = 'true';
 
-          if (isReady) {
-            wrapper.dataset.b24Submitted = 'true';
-
-            const messageId = messageItem.getAttribute('data-message-id');
-            if (messageId) {
-              try {
-                const submitted = JSON.parse(sessionStorage.getItem('b24_submitted_ids') || '[]');
-                if (!submitted.includes(messageId)) {
-                  submitted.push(messageId);
-                  sessionStorage.setItem('b24_submitted_ids', JSON.stringify(submitted));
-                }
-              } catch (e) {}
-            }
-
-            // Небольшая задержка 100мс перед кликом
-            setTimeout(() => {
-              submitBtn.click();
-            }, 100);
+          const messageId = messageItem.getAttribute('data-message-id');
+          if (messageId) {
+            try {
+              const submitted = JSON.parse(sessionStorage.getItem('b24_submitted_ids') || '[]');
+              if (!submitted.includes(messageId)) {
+                submitted.push(messageId);
+                sessionStorage.setItem('b24_submitted_ids', JSON.stringify(submitted));
+              }
+            } catch (e) {}
           }
+
+          // Небольшая задержка 150мс для применения значений перед кликом
+          setTimeout(() => {
+            submitBtn.click();
+          }, 150);
         }
       },
       initB24FormObserver() {
@@ -553,22 +617,26 @@ export default {
               return;
             }
 
-            // КРИТИЧНО: НЕ отправляем форму, если пользователь еще не отправил сообщение!
+            // Если телефон пустой — заполняем данными вошедшего пользователя
+            if (!this.isPhoneFieldFilled(wrapper)) {
+              this.populateFormFields(wrapper);
+            }
+
+            // КРИТИЧНО 1: НЕ отправляем форму, если пользователь еще не отправил сообщение!
             if (!this.isUserMessageSent()) {
               return;
             }
 
-            const phoneInput = wrapper.querySelector('input[name="phone"], input[type="tel"]');
+            // КРИТИЧНО 2: НЕ отправляем форму, если телефон не заполнен!
+            if (!this.isPhoneFieldFilled(wrapper)) {
+              return;
+            }
+
             const submitBtn = wrapper.querySelector(
               '.b24-form-btn-block button[type="submit"], .b24-form-btn[type="submit"], button.b24-form-btn, button[type="submit"]'
             );
 
-            const isFilled = phoneInput && (
-              phoneInput.value.trim().length > 0 ||
-              phoneInput.classList.contains('b24-form-control-not-empty')
-            );
-
-            if (isFilled && submitBtn) {
+            if (submitBtn) {
               wrapper.dataset.b24Submitted = 'true';
 
               if (messageId) {
@@ -583,7 +651,7 @@ export default {
 
               setTimeout(() => {
                 submitBtn.click();
-              }, 100);
+              }, 150);
             }
           });
         });

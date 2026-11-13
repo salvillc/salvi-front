@@ -58,6 +58,10 @@ export default {
             "        })(window,document,'https://cdn.bitrix24.eu/b7849145/crm/site_button/loader_11_hlll13.js');");
 
         document.head.appendChild(script2);
+
+        window.addEventListener('b24:form:init', (event) => {
+            window._b24LastFormObj = event.detail.object;
+        });
     },
   created() {
     document.querySelector("body").classList = "auth__layout"
