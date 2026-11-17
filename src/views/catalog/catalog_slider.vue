@@ -42,14 +42,15 @@
 
         <div v-if="catalog_data && !categoryList.length && product_list" style="display: flex; flex-direction: column; align-items: flex-end">
           <v-dialog
+            v-if="specification.length"
             v-model="locationModal"
             :fullscreen="$store.getters['params/mobileView']"
             persistent
             max-width="400px"
           >
             <template v-slot:activator="{ on }">
-              <div class="location__title">
-                <div v-show="locationName" class="label">Локацiя:</div>
+              <div v-if="locationName" class="location__title">
+                <div class="label">Локацiя:</div>
                 <div class="name">
                   <b class="ellipsis">{{ locationName }}</b>
                   <v-btn
@@ -107,14 +108,15 @@
       <div v-if="categoryList.length" class="header-nav">
 
         <v-dialog
+          v-if="specification.length"
           v-model="locationModal"
           :fullscreen="$store.getters['params/mobileView']"
           persistent
           max-width="400px"
         >
           <template v-slot:activator="{ on }">
-            <div class="header-nav__sort-location">
-              <div v-show="locationName" class="label">Локацiя:</div>
+            <div v-if="locationName" class="header-nav__sort-location">
+              <div class="label">Локацiя:</div>
               <div class="name">
                 <b class="ellipsis">{{ locationName }}</b>
                 <v-btn

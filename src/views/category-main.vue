@@ -370,6 +370,18 @@
     position: relative;
     aspect-ratio: 24/5;
     margin-left: 50px;
+
+    @media (max-width: 768px) {
+      margin-left: 0;
+      width: 100%;
+      margin-bottom: 0;
+    }
+  }
+
+  .section__content {
+    @media (max-width: 768px) {
+      padding-top: 15px;
+    }
   }
   .home__categories {
     padding-top: 30px;
@@ -487,6 +499,10 @@
   }
   .home__slider-section {
     padding-top: 50px;
+
+    @media (max-width: 768px) {
+      padding-top: 0;
+    }
   }
 
   .home__slider-section-title {
@@ -499,6 +515,10 @@
     overflow: hidden;
     aspect-ratio: 24/5;
     height: auto !important;
+
+    @media (max-width: 768px) {
+      width: 100%;
+    }
   }
 
   /deep/.home__banners .v-window__container {
@@ -540,6 +560,7 @@
 
   .banner-slider >>> .v-carousel__controls {
     background: transparent !important;
+    z-index: 3;
   }
 
   .banner-slider >>> .v-btn--icon.v-carousel__controls__item {
@@ -580,6 +601,10 @@
     top: 50%;
     transform: translate(0, -50%);
     opacity: 0.5;
+
+    @media (max-width: 768px) {
+      display: none !important;
+    }
 
     &:hover {
       opacity: 1;
@@ -627,5 +652,18 @@
     justify-content: center;
     align-items: center;
     padding-bottom: 10px;
+
+    @media (max-width: 768px) {
+      display: none !important;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .banner-slider >>> .v-window__prev,
+    .banner-slider >>> .v-window__next,
+    .banner-slider >>> .v-carousel__prev,
+    .banner-slider >>> .v-carousel__next {
+      display: none !important;
+    }
   }
 </style>
